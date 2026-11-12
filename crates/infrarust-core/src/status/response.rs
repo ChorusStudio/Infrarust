@@ -9,7 +9,7 @@ use infrarust_protocol::ProtocolVersion;
 use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
 
-use super::normalize::normalize_status_json;
+use super::normalize::{OMIT_PLAYERS, normalize_status_json};
 
 /// Parsed Minecraft status response.
 ///
@@ -114,7 +114,12 @@ impl ServerPingResponse {
         }
         if let Some(max) = motd.max_players {
             self.players.max = max.cast_signed();
+            self.use_parsed_players();
         }
+    }
+
+    pub(crate) fn use_parsed_players(&mut self) {
+        self.extra.remove(OMIT_PLAYERS);
     }
 
     /// Serializes to a JSON string for the `CStatusResponse` packet.
@@ -122,7 +127,15 @@ impl ServerPingResponse {
     /// # Errors
     /// Returns `serde_json::Error` if serialization fails.
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string(self)
+        if !self.extra.contains_key(OMIT_PLAYERS) {
+            return serde_json::to_string(self);
+        }
+        let mut value = serde_json::to_value(self)?;
+        if let Some(obj) = value.as_object_mut() {
+            obj.remove(OMIT_PLAYERS);
+            obj.remove("players");
+        }
+        serde_json::to_string(&value)
     }
 }
 
@@ -379,5 +392,43 @@ mod tests {
         assert_eq!(resp.description.as_str(), Some(""));
         assert!(resp.players.sample.is_empty());
         assert_eq!(resp.version.name, "1.8");
+    }
+
+    #[test]
+    fn a_missing_player_list_stays_missing() {
+        let wire = |json: &str| {
+            let resp = ServerPingResponse::parse(json).unwrap();
+            serde_json::from_str::<serde_json::Value>(&resp.to_json().unwrap()).unwrap()
+        };
+        let version = r#"{"version":{"name":"1.21","protocol":767}"#;
+        assert!(wire(&format!("{version}}}")).get("players").is_none());
+        assert!(
+            wire(&format!(r#"{version},"players":null}}"#))
+                .get("players")
+                .is_none()
+        );
+        assert_eq!(
+            wire(&format!(r#"{version},"players":{{"max":0,"online":0}}}}"#))["players"]["online"],
+            0
+        );
+        let mut resp = ServerPingResponse::parse(&format!("{version}}}")).unwrap();
+        resp.apply_overrides(&MotdEntry {
+            text: "Hi".to_string(),
+            favicon: None,
+            version_name: None,
+            version_protocol: None,
+            max_players: None,
+        });
+        let kept: serde_json::Value = serde_json::from_str(&resp.to_json().unwrap()).unwrap();
+        assert!(kept.get("players").is_none());
+        resp.apply_overrides(&MotdEntry {
+            text: "Hi".to_string(),
+            favicon: None,
+            version_name: None,
+            version_protocol: None,
+            max_players: Some(100),
+        });
+        let replaced: serde_json::Value = serde_json::from_str(&resp.to_json().unwrap()).unwrap();
+        assert_eq!(replaced["players"]["max"], 100);
     }
 }

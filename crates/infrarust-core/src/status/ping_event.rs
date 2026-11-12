@@ -30,6 +30,7 @@ pub fn apply_api_to_core(
     core.description = api.description.to_json_value_for(client);
     apply_api_scalars_to_core(core, api);
     apply_api_sample_to_core(core, api);
+    core.use_parsed_players();
 }
 
 pub fn apply_api_sample_to_core(core: &mut ServerPingResponse, api: &PingResponse) {
@@ -74,6 +75,9 @@ pub fn merge_ping_event(
     }
     if api.player_sample != sent.player_sample {
         apply_api_sample_to_core(core, &api);
+        core.use_parsed_players();
+    } else if api.max_players != sent.max_players || api.online_players != sent.online_players {
+        core.use_parsed_players();
     }
     core.players.max = api.max_players;
     core.players.online = api.online_players;
@@ -338,5 +342,31 @@ mod tests {
 
         // Extra fields preserved
         assert!(core.extra.contains_key("forgeData"));
+    }
+
+    #[test]
+    fn an_unedited_ping_keeps_a_missing_player_list() {
+        let json = r#"{"version":{"name":"1.21","protocol":767},"description":{"text":"Hi"}}"#;
+        let mut core = ServerPingResponse::parse(json).unwrap();
+        let api = core_to_api_ping_response(&core);
+        let encoded = |core: &ServerPingResponse| {
+            serde_json::from_str::<serde_json::Value>(&core.to_json().unwrap()).unwrap()
+        };
+        merge_ping_event(
+            &mut core,
+            &api.clone(),
+            api.clone(),
+            ProtocolVersion::MINECRAFT_1_21_11,
+        );
+        assert!(encoded(&core).get("players").is_none());
+        let mut edited = api.clone();
+        edited.online_players = 4;
+        merge_ping_event(
+            &mut core,
+            &api,
+            edited,
+            ProtocolVersion::MINECRAFT_1_21_11,
+        );
+        assert_eq!(encoded(&core)["players"]["online"], 4);
     }
 }

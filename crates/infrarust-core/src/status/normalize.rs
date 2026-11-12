@@ -3,6 +3,7 @@
 //! The proxy re-encodes status JSON, so a document it cannot deserialize
 //! becomes "unreachable" even when the backend response was usable. String
 //! counts, a missing description, and `"sample": null` are filled in here.
+//! A missing or null player list is omitted again so the client shows "???".
 //! Description text and sample entries are left unchanged.
 
 use serde_json::{Map, Value};
@@ -19,6 +20,10 @@ pub(crate) fn normalize_status_json(value: &mut Value) -> Result<(), &'static st
     if let Some(Value::Object(version)) = obj.get_mut("version") {
         ensure_string(version, "name");
         ensure_i32(version, "protocol");
+    }
+    if obj.get("players").is_none_or(Value::is_null) {
+        obj.remove("players");
+        obj.insert(OMIT_PLAYERS.to_owned(), Value::Bool(true));
     }
     match obj.get_mut("players") {
         Some(Value::Object(players)) => {
@@ -51,6 +56,9 @@ fn ensure_string(map: &mut Map<String, Value>, key: &str) {
     };
     map.insert(key.to_owned(), Value::String(text));
 }
+
+/// Hidden extra key. Present only while the backend sent no player list.
+pub(crate) const OMIT_PLAYERS: &str = "\u{0}players";
 
 fn ensure_i32(map: &mut Map<String, Value>, key: &str) {
     let number = match map.get(key) {

@@ -22,7 +22,11 @@ fn make_mock_script(dir: &std::path::Path, name: &str, content: &str) -> std::pa
 }
 
 fn script_name() -> &'static str {
-    if cfg!(windows) { "server.ps1" } else { "server.sh" }
+    if cfg!(windows) {
+        "server.ps1"
+    } else {
+        "server.sh"
+    }
 }
 
 fn shell() -> &'static str {
@@ -132,7 +136,11 @@ async fn test_start_detects_ready_pattern() {
     let script = make_mock_script(
         dir.path(),
         script_name(),
-        &script(&format!("{loading}\n{pause}\n{}\n{}", ready_line(), wait_for_stop())),
+        &script(&format!(
+            "{loading}\n{pause}\n{}\n{}",
+            ready_line(),
+            wait_for_stop()
+        )),
     );
     let config = make_config(&script, dir.path());
     let provider = LocalProvider::new(config);

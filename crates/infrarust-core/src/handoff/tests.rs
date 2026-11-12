@@ -638,10 +638,7 @@ async fn the_proxy_shutdown_ends_a_relay_still_writing_its_reply() {
     );
     let _backend = accept(&backend).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
-    assert!(
-        !task.is_finished(),
-        "the handoff should still be running"
-    );
+    assert!(!task.is_finished(), "the handoff should still be running");
 
     shutdown.cancel();
     let ended = tokio::time::timeout(Duration::from_secs(2), task)
