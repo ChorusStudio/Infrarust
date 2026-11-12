@@ -5,9 +5,7 @@ use infrarust_api::events::proxy::PingResponse;
 use infrarust_api::types::{ClickEvent, Component, HoverEvent, NamedColor, ProtocolVersion};
 
 use infrarust_core::status::ping_event::{apply_api_to_core, core_to_api_ping_response};
-use infrarust_core::status::response::{
-    PingPlayerSample, PingPlayers, PingVersion, ServerPingResponse,
-};
+use infrarust_core::status::response::{PingPlayers, PingVersion, ServerPingResponse};
 
 fn make_core_response() -> ServerPingResponse {
     ServerPingResponse {
@@ -18,10 +16,10 @@ fn make_core_response() -> ServerPingResponse {
         players: PingPlayers {
             max: 100,
             online: 42,
-            sample: vec![PingPlayerSample {
-                name: "Notch".to_string(),
-                id: "069a79f4-44e9-4726-a5be-fca90e38aaf5".to_string(),
-            }],
+            sample: vec![serde_json::json!({
+                "name": "Notch",
+                "id": "069a79f4-44e9-4726-a5be-fca90e38aaf5"
+            })],
         },
         description: serde_json::json!({"text": "A Minecraft Server", "color": "gold"}),
         favicon: Some("data:image/png;base64,abc".to_string()),

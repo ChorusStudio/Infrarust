@@ -1,6 +1,5 @@
 //! Forwarding secret file management.
 
-use std::io::Write;
 use std::path::Path;
 
 use rand::RngExt;

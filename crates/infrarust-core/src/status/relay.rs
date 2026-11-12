@@ -162,7 +162,7 @@ pub(crate) async fn status_exchange(
         })?
         .json_response;
 
-    let response: ServerPingResponse = serde_json::from_str(&json_response).map_err(|e| {
+    let response = ServerPingResponse::parse(&json_response).map_err(|e| {
         CoreError::InvalidStatus(format!("invalid status JSON from '{server_id}': {e}"))
     })?;
 

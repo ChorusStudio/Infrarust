@@ -6,14 +6,17 @@
 
 use infrarust_config::MotdEntry;
 use infrarust_protocol::ProtocolVersion;
+use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
+
+use super::normalize::normalize_status_json;
 
 /// Parsed Minecraft status response.
 ///
 /// Corresponds to the JSON returned by a modern (1.7+) Minecraft server.
 /// The `extra` field captures unknown keys (Forge's `forgeData`, Fabric's
 /// `modinfo`, etc.) so they are preserved during relay.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ServerPingResponse {
     pub version: PingVersion,
     pub players: PingPlayers,
@@ -29,24 +32,20 @@ pub struct ServerPingResponse {
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PingVersion {
     pub name: String,
     pub protocol: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PingPlayers {
     pub max: i32,
     pub online: i32,
+    /// Backend sample list, kept as JSON. Entries are not rewritten: a client
+    /// that rejects a non-UUID `id` still rejects it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub sample: Vec<PingPlayerSample>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PingPlayerSample {
-    pub name: String,
-    pub id: String,
+    pub sample: Vec<serde_json::Value>,
 }
 
 impl ServerPingResponse {
@@ -72,6 +71,16 @@ impl ServerPingResponse {
         }
     }
 
+    /// Parses a status document, including the non-standard shapes MOTD
+    /// plugins actually send.
+    ///
+    /// # Errors
+    /// Returns `serde_json::Error` when the payload is not a JSON object.
+    pub fn parse(input: &str) -> Result<Self, serde_json::Error> {
+        let input = input.trim_start_matches('\u{feff}').trim();
+        serde_json::from_str(input)
+    }
+
     pub fn from_entry(
         entry: &MotdEntry,
         protocol: ProtocolVersion,
@@ -93,7 +102,8 @@ impl ServerPingResponse {
     /// Applies config overrides from a `MotdEntry` onto this response.
     ///
     /// `text` always overrides the description. Other fields override only
-    /// when present (`Some`).
+    /// when present (`Some`). Formatting codes stay in the text; the client
+    /// interprets them.
     pub fn apply_overrides(&mut self, motd: &MotdEntry) {
         self.description = serde_json::json!({"text": &motd.text});
         if let Some(ref name) = motd.version_name {
@@ -114,6 +124,34 @@ impl ServerPingResponse {
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
+}
+
+impl<'de> Deserialize<'de> for ServerPingResponse {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut value = serde_json::Value::deserialize(deserializer)?;
+        normalize_status_json(&mut value).map_err(D::Error::custom)?;
+        let parsed = ParsedStatus::deserialize(value).map_err(D::Error::custom)?;
+        Ok(Self {
+            version: parsed.version,
+            players: parsed.players,
+            description: parsed.description,
+            favicon: parsed.favicon,
+            extra: parsed.extra,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+struct ParsedStatus {
+    #[serde(default)]
+    version: PingVersion,
+    #[serde(default)]
+    players: PingPlayers,
+    description: serde_json::Value,
+    #[serde(default)]
+    favicon: Option<String>,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[cfg(test)]
@@ -155,7 +193,7 @@ mod tests {
         assert_eq!(resp.players.max, 100);
         assert_eq!(resp.players.online, 42);
         assert_eq!(resp.players.sample.len(), 1);
-        assert_eq!(resp.players.sample[0].name, "Notch");
+        assert_eq!(resp.players.sample[0]["name"], "Notch");
         assert!(resp.extra.is_empty());
     }
 
@@ -282,5 +320,64 @@ mod tests {
         };
         resp.apply_overrides(&entry);
         assert!(resp.favicon.is_none());
+    }
+
+    #[test]
+    fn valid_sample_uuid_is_preserved() {
+        let resp: ServerPingResponse = serde_json::from_str(VANILLA_JSON).unwrap();
+        assert_eq!(
+            resp.players.sample[0]["id"],
+            "069a79f4-44e9-4726-a5be-fca90e38aaf5"
+        );
+    }
+
+    #[test]
+    fn configured_motd_keeps_formatting_codes_in_the_text() {
+        let resp = ServerPingResponse::synthetic("\u{a7}aHello", ProtocolVersion::V1_21, None);
+        assert_eq!(resp.description["text"], "\u{a7}aHello");
+    }
+
+    #[test]
+    fn nonstandard_motd_json_is_accepted_without_rewriting_the_description() {
+        let json = r#"{
+            "version": {"name": "§6§lCustom", "protocol": "47"},
+            "players": {
+                "max": "20",
+                "online": "3",
+                "sample": [
+                    {"name": "§aLine", "id": "0"},
+                    {"name": "§bLine", "id": 1},
+                    "§eHover"
+                ]
+            },
+            "description": "{\"text\":\"Hello\",\"extra\":{\"text\":\"!\",\"bold\":\"true\"},\"color\":6}",
+            "favicon": "",
+            "enforcesSecureChat": "true",
+            "forgeData": {"mods": []}
+        }"#;
+        let resp = ServerPingResponse::parse(json).unwrap();
+        assert_eq!(resp.version.protocol, 47);
+        assert_eq!(resp.version.name, "§6§lCustom");
+        assert_eq!((resp.players.online, resp.players.max), (3, 20));
+        assert_eq!(resp.players.sample[0]["name"], "§aLine");
+        assert_eq!(resp.players.sample[0]["id"], "0");
+        assert_eq!(resp.players.sample[1]["id"], 1);
+        assert_eq!(resp.players.sample[2], "§eHover");
+        assert_eq!(
+            resp.description.as_str().unwrap(),
+            r#"{"text":"Hello","extra":{"text":"!","bold":"true"},"color":6}"#
+        );
+        assert_eq!(resp.favicon.as_deref(), Some(""));
+        assert_eq!(resp.extra["enforcesSecureChat"], "true");
+        assert!(resp.extra.contains_key("forgeData"));
+    }
+
+    #[test]
+    fn missing_description_and_null_sample_still_parse() {
+        let json = "\u{feff}{\"version\":{\"name\":\"1.8\",\"protocol\":47},\"players\":{\"max\":1,\"online\":0,\"sample\":null}}";
+        let resp = ServerPingResponse::parse(json).unwrap();
+        assert_eq!(resp.description.as_str(), Some(""));
+        assert!(resp.players.sample.is_empty());
+        assert_eq!(resp.version.name, "1.8");
     }
 }

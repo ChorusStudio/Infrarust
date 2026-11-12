@@ -2,7 +2,7 @@ use infrarust_api::events::proxy::PingResponse;
 use infrarust_api::types::{Component, ProtocolVersion};
 use uuid::Uuid;
 
-use crate::status::response::{PingPlayerSample, ServerPingResponse};
+use crate::status::response::ServerPingResponse;
 
 /// Converts the core status response into the typed API representation.
 ///
@@ -17,17 +17,7 @@ pub fn core_to_api_ping_response(core: &ServerPingResponse) -> PingResponse {
         core.version.name.clone(),
         core.favicon.clone(),
     );
-    response.player_sample = core
-        .players
-        .sample
-        .iter()
-        .map(|entry| {
-            (
-                entry.name.clone(),
-                Uuid::parse_str(&entry.id).unwrap_or_default(),
-            )
-        })
-        .collect();
+    response.player_sample = core.players.sample.iter().filter_map(sample_pair).collect();
     response
 }
 
@@ -46,11 +36,20 @@ pub fn apply_api_sample_to_core(core: &mut ServerPingResponse, api: &PingRespons
     core.players.sample = api
         .player_sample
         .iter()
-        .map(|(name, id)| PingPlayerSample {
-            name: name.clone(),
-            id: id.to_string(),
-        })
+        .map(|(name, id)| serde_json::json!({ "name": name, "id": id.to_string() }))
         .collect();
+}
+
+/// Name/id pair a plugin can edit. Other sample entries stay in the raw list
+/// until a plugin actually changes the sample.
+fn sample_pair(entry: &serde_json::Value) -> Option<(String, Uuid)> {
+    let obj = entry.as_object()?;
+    let name = obj.get("name")?.as_str()?.to_owned();
+    let id = match obj.get("id").and_then(serde_json::Value::as_str) {
+        Some(text) => Uuid::parse_str(text).unwrap_or_default(),
+        None => Uuid::nil(),
+    };
+    Some((name, id))
 }
 
 #[cfg(feature = "test-support")]
@@ -90,7 +89,7 @@ mod tests {
 
     #[test]
     fn test_core_to_api_full_response() {
-        use crate::status::response::{PingPlayerSample, PingPlayers, PingVersion};
+        use crate::status::response::{PingPlayers, PingVersion};
 
         let core = ServerPingResponse {
             version: PingVersion {
@@ -100,10 +99,10 @@ mod tests {
             players: PingPlayers {
                 max: 100,
                 online: 42,
-                sample: vec![PingPlayerSample {
-                    name: "Notch".to_string(),
-                    id: "069a79f4-44e9-4726-a5be-fca90e38aaf5".to_string(),
-                }],
+                sample: vec![serde_json::json!({
+                    "name": "Notch",
+                    "id": "069a79f4-44e9-4726-a5be-fca90e38aaf5"
+                })],
             },
             description: serde_json::json!({"text": "A Minecraft Server"}),
             favicon: Some("data:image/png;base64,abc".to_string()),
@@ -253,10 +252,10 @@ mod tests {
     #[test]
     fn merge_ping_event_rewrites_the_sample_only_when_a_plugin_changed_it() {
         let mut core = rich_response();
-        core.players.sample = vec![PingPlayerSample {
-            name: "\u{a7}6Welcome".to_string(),
-            id: "not-a-uuid".to_string(),
-        }];
+        core.players.sample = vec![serde_json::json!({
+            "name": "\u{a7}6Welcome",
+            "id": "not-a-uuid"
+        })];
         let original = serde_json::to_value(&core.players.sample).unwrap();
 
         let api = core_to_api_ping_response(&core);
