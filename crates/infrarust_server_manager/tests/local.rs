@@ -21,11 +21,34 @@ fn make_mock_script(dir: &std::path::Path, name: &str, content: &str) -> std::pa
     path
 }
 
+fn script_name() -> &'static str {
+    if cfg!(windows) { "server.ps1" } else { "server.sh" }
+}
+
+fn shell() -> &'static str {
+    if cfg!(windows) { "powershell" } else { "bash" }
+}
+
+fn shell_args(script_path: &std::path::Path) -> Vec<String> {
+    let script = script_path.to_str().unwrap().to_string();
+    if cfg!(windows) {
+        vec![
+            "-NoProfile".to_string(),
+            "-ExecutionPolicy".to_string(),
+            "Bypass".to_string(),
+            "-File".to_string(),
+            script,
+        ]
+    } else {
+        vec![script]
+    }
+}
+
 fn make_config(script_path: &std::path::Path, working_dir: &std::path::Path) -> LocalManagerConfig {
     LocalManagerConfig {
-        command: "bash".to_string(),
+        command: shell().to_string(),
         working_dir: working_dir.to_path_buf(),
-        args: vec![script_path.to_str().unwrap().to_string()],
+        args: shell_args(script_path),
         ready_pattern: r#"For help, type "help""#.to_string(),
         shutdown_timeout: std::time::Duration::from_secs(5),
         shutdown_after: None,
@@ -34,10 +57,58 @@ fn make_config(script_path: &std::path::Path, working_dir: &std::path::Path) -> 
     }
 }
 
+/// Windows PowerShell writes the success stream as UTF-16 unless told otherwise,
+/// which hides the ready pattern from the provider's line reader.
+fn script(body: &str) -> String {
+    if cfg!(windows) {
+        format!(
+            "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false\n\
+             $OutputEncoding = [Console]::OutputEncoding\n\
+             {body}"
+        )
+    } else {
+        format!("#!/bin/bash\n{body}")
+    }
+}
+
+fn ready_line() -> &'static str {
+    if cfg!(windows) {
+        "[Console]::Out.WriteLine('For help, type \"help\"')\n[Console]::Out.Flush()"
+    } else {
+        "echo 'For help, type \"help\"'"
+    }
+}
+
+fn wait_for_stop() -> &'static str {
+    if cfg!(windows) {
+        // [Console]::In does not see a redirected stdin and exits the script.
+        "$reader = New-Object System.IO.StreamReader ([Console]::OpenStandardInput())\n\
+         while ($null -ne ($line = $reader.ReadLine())) {\n\
+             if ($line -eq \"stop\") { exit 0 }\n\
+         }\n\
+         exit 0"
+    } else {
+        "while read -r line; do\n    if [ \"$line\" = \"stop\" ]; then\n        exit 0\n    fi\ndone"
+    }
+}
+
+async fn wait_for_status(provider: &LocalProvider, expected: ProviderStatus) {
+    let mut last = None;
+    for _ in 0..50 {
+        let status = provider.check_status().await.unwrap();
+        if status == expected {
+            return;
+        }
+        last = Some(status);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("expected {expected:?}, last observed {last:?}");
+}
+
 #[tokio::test]
 async fn test_check_status_not_started() {
     let dir = tempfile::tempdir().unwrap();
-    let script = make_mock_script(dir.path(), "server.sh", "#!/bin/bash\necho done\n");
+    let script = make_mock_script(dir.path(), script_name(), &script("echo done\n"));
     let config = make_config(&script, dir.path());
     let provider = LocalProvider::new(config);
 
@@ -48,20 +119,20 @@ async fn test_check_status_not_started() {
 #[tokio::test]
 async fn test_start_detects_ready_pattern() {
     let dir = tempfile::tempdir().unwrap();
+    let loading = if cfg!(windows) {
+        "Write-Output \"Loading...\""
+    } else {
+        "echo \"Loading...\""
+    };
+    let pause = if cfg!(windows) {
+        "Start-Sleep -Milliseconds 200"
+    } else {
+        "sleep 0.2"
+    };
     let script = make_mock_script(
         dir.path(),
-        "server.sh",
-        r#"#!/bin/bash
-echo "Loading..."
-sleep 0.2
-echo 'For help, type "help"'
-# Wait for stop on stdin
-while read -r line; do
-    if [ "$line" = "stop" ]; then
-        exit 0
-    fi
-done
-"#,
+        script_name(),
+        &script(&format!("{loading}\n{pause}\n{}\n{}", ready_line(), wait_for_stop())),
     );
     let config = make_config(&script, dir.path());
     let provider = LocalProvider::new(config);
@@ -70,7 +141,7 @@ done
 
     // Wait for the ready pattern to be detected
     let mut detected = false;
-    for _ in 0..20 {
+    for _ in 0..50 {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         let status = provider.check_status().await.unwrap();
         if status == ProviderStatus::Running {
@@ -149,19 +220,13 @@ async fn test_child_process_killed_when_provider_dropped() {
 async fn test_check_status_starting() {
     let dir = tempfile::tempdir().unwrap();
     // Script that never outputs the ready pattern
-    let script = make_mock_script(
-        dir.path(),
-        "server.sh",
-        r#"#!/bin/bash
-echo "Loading..."
-# Wait forever
-while read -r line; do
-    if [ "$line" = "stop" ]; then
-        exit 0
-    fi
-done
-"#,
-    );
+    let loading = if cfg!(windows) {
+        "Write-Output \"Loading...\""
+    } else {
+        "echo \"Loading...\""
+    };
+    let body = script(&format!("{loading}\n{}", wait_for_stop()));
+    let script = make_mock_script(dir.path(), script_name(), &body);
     let config = make_config(&script, dir.path());
     let provider = LocalProvider::new(config);
 
@@ -178,49 +243,35 @@ done
 #[tokio::test]
 async fn test_unexpected_exit_code_reports_crashed() {
     let dir = tempfile::tempdir().unwrap();
-    let script = make_mock_script(dir.path(), "server.sh", "#!/bin/bash\nexit 1\n");
+    let script = make_mock_script(dir.path(), script_name(), &script("exit 1\n"));
     let config = make_config(&script, dir.path());
     let provider = LocalProvider::new(config);
 
     provider.start().await.unwrap();
-
-    // Wait for process to exit
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let status = provider.check_status().await.unwrap();
-    assert_eq!(status, ProviderStatus::Crashed);
+    wait_for_status(&provider, ProviderStatus::Crashed).await;
 }
 
 #[tokio::test]
 async fn test_clean_self_exit_reports_stopped() {
     let dir = tempfile::tempdir().unwrap();
-    let script = make_mock_script(dir.path(), "server.sh", "#!/bin/bash\nexit 0\n");
+    let script = make_mock_script(dir.path(), script_name(), &script("exit 0\n"));
     let config = make_config(&script, dir.path());
     let provider = LocalProvider::new(config);
 
     provider.start().await.unwrap();
-
-    // Wait for process to exit
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let status = provider.check_status().await.unwrap();
-    assert_eq!(status, ProviderStatus::Stopped);
+    wait_for_status(&provider, ProviderStatus::Stopped).await;
 }
 
 #[tokio::test]
 async fn test_stop_timeout_kills() {
     let dir = tempfile::tempdir().unwrap();
     // Script that ignores stop command
-    let script = make_mock_script(
-        dir.path(),
-        "server.sh",
-        r#"#!/bin/bash
-echo 'For help, type "help"'
-# Ignore stdin, trap signals
-trap '' TERM INT
-sleep 60
-"#,
-    );
+    let body = if cfg!(windows) {
+        format!("{}\nStart-Sleep -Seconds 60\n", ready_line())
+    } else {
+        format!("{}\ntrap '' TERM INT\nsleep 60\n", ready_line())
+    };
+    let script = make_mock_script(dir.path(), script_name(), &script(&body));
     let mut config = make_config(&script, dir.path());
     config.shutdown_timeout = std::time::Duration::from_secs(1);
     let provider = LocalProvider::new(config);
@@ -238,15 +289,7 @@ sleep 60
 #[tokio::test]
 async fn test_double_start_fails() {
     let dir = tempfile::tempdir().unwrap();
-    let script = make_mock_script(
-        dir.path(),
-        "server.sh",
-        r#"#!/bin/bash
-while read -r line; do
-    if [ "$line" = "stop" ]; then exit 0; fi
-done
-"#,
-    );
+    let script = make_mock_script(dir.path(), script_name(), &script(wait_for_stop()));
     let config = make_config(&script, dir.path());
     let provider = LocalProvider::new(config);
 

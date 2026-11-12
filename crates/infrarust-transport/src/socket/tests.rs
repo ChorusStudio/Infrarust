@@ -13,6 +13,8 @@ fn test_configure_listener_socket_binds() {
     let socket = configure_listener_socket(addr, false).unwrap();
     let local = socket.local_addr().unwrap();
     assert!(local.as_socket().unwrap().port() > 0);
+    // Windows cannot read the nonblocking flag back.
+    #[cfg(unix)]
     assert!(socket.nonblocking().unwrap());
 }
 

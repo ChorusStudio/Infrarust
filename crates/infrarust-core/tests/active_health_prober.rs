@@ -28,7 +28,7 @@ async fn a_server_opting_into_probing_is_probed_with_the_proxy_block_disabled() 
     .unwrap();
 
     let config: ProxyConfig = toml::from_str(&format!(
-        "bind = \"127.0.0.1:0\"\nservers_dir = \"{}\"\n[active_health]\nenabled = false\n",
+        "bind = \"127.0.0.1:0\"\nservers_dir = {:?}\n[active_health]\nenabled = false\n",
         servers_dir.display()
     ))
     .unwrap();
