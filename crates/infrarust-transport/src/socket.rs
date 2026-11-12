@@ -82,6 +82,7 @@ fn configure_stream_socket(
         .set_tcp_nodelay(true)
         .map_err(TransportError::SocketConfig)?;
 
+    #[allow(unused_mut)]
     let mut ka = TcpKeepalive::new()
         .with_time(keepalive.time)
         .with_interval(keepalive.interval);

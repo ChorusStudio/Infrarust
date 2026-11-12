@@ -339,6 +339,7 @@ async fn run(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StopSignal {
     Interrupt,
+    #[allow(dead_code)]
     Terminate,
 }
 

@@ -123,7 +123,7 @@ pub fn migrate_proxy_config(
     let v1: V1InfrarustConfig =
         serde_yml::from_str(&content).map_err(|source| ConfigError::ParseYaml {
             path: input_file.to_path_buf(),
-            source,
+            source: Box::new(source),
         })?;
 
     let result = convert_v1_proxy_config(&v1);

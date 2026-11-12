@@ -30,6 +30,7 @@ pub fn load_or_generate_secret(path: &Path) -> Result<Vec<u8>, std::io::Error> {
 
         #[cfg(unix)]
         {
+            use std::io::Write;
             use std::os::unix::fs::OpenOptionsExt;
             let mut file = std::fs::OpenOptions::new()
                 .write(true)
