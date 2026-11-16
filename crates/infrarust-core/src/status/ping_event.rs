@@ -361,12 +361,7 @@ mod tests {
         assert!(encoded(&core).get("players").is_none());
         let mut edited = api.clone();
         edited.online_players = 4;
-        merge_ping_event(
-            &mut core,
-            &api,
-            edited,
-            ProtocolVersion::MINECRAFT_1_21_11,
-        );
+        merge_ping_event(&mut core, &api, edited, ProtocolVersion::MINECRAFT_1_21_11);
         assert_eq!(encoded(&core)["players"]["online"], 4);
     }
 }
