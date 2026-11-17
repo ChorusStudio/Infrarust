@@ -147,7 +147,7 @@ fn prompt_web(proxy_bind: SocketAddr) -> anyhow::Result<Option<WebSettings>> {
     #[cfg(not(feature = "plugin-admin-api"))]
     {
         let _ = proxy_bind;
-        return Ok(None);
+        Ok(None)
     }
     #[cfg(feature = "plugin-admin-api")]
     {
