@@ -384,7 +384,7 @@ api_key = "your-api-key-here"
 requests_per_minute = 60
 ```
 
-Enables the HTTP admin API (and optional web UI) used by management tools and the CLI. The section is optional; omit it entirely to keep the web interface off. `enable_webui` follows `enable_api` when you do not set it, so `enable_api = false` on its own turns both off. Setting `enable_webui = true` next to `enable_api = false` is rejected at startup, since the dashboard is served by the API's own HTTP server and calls it for every screen.
+Enables the HTTP admin API (and optional web UI) used by management tools and the CLI. The published binaries do not include it: rebuild with `--features plugin-admin-api`. The section is optional; omit it entirely to keep the web interface off. `enable_webui` follows `enable_api` when you do not set it, so `enable_api = false` on its own turns both off. Setting `enable_webui = true` next to `enable_api = false` is rejected at startup, since the dashboard is served by the API's own HTTP server and calls it for every screen.
 
 `bind` defaults to `127.0.0.1:8080`. If you bind to a non-loopback address, `api_key` is required. A key shorter than 16 characters is refused on any bind, and the placeholder `CHANGE-ME` counts as no key. When bound to loopback without a key, Infrarust generates an ephemeral key at startup and prints it once on stdout; the log only gets a warning that a key was generated, not the key.
 

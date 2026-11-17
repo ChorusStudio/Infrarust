@@ -35,7 +35,7 @@ Infrarust includes three built-in plugins:
 
 | Plugin | Activation | Description |
 |--------|------------|-------------|
-| [Admin API & Web UI](./builtin/admin-api) | `[web]` section in `infrarust.toml`, with `enable_api` on | REST API and embedded web dashboard for monitoring, server and proxy configuration, and backend drain controls. |
+| [Admin API & Web UI](./builtin/admin-api) | `plugin-admin-api` feature (off by default), then a `[web]` section with `enable_api` on | REST API and embedded web dashboard for monitoring, server and proxy configuration, and backend drain controls. |
 | [Auth](./builtin/auth) | `plugin-auth` feature flag (on by default), and `"auth"` in the `limbo_handlers` of a `client_only` or `offline` server | Password-based authentication with `/login` and `/register` commands. Holds players in limbo until authenticated. |
 | [Server Wake](./builtin/server-wake) | `plugin-server-wake` feature flag (on by default), and `"server_wake"` in the `limbo_handlers` of a `client_only` or `offline` server | Holds players in limbo while a backend server starts up, showing status messages. |
 

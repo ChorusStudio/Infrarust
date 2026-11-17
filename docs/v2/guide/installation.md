@@ -103,6 +103,7 @@ Enable features at compile time with `--features`:
 | `plugin-auth` | via `default-plugins` | Built-in authentication plugin |
 | `plugin-server-wake` | via `default-plugins` | Holds players in limbo while their target server starts up |
 | `plugin-hello` | no | Example hello-world plugin |
+| `plugin-admin-api` | no | Admin REST API and web dashboard |
 | `docker` | no | Docker integration for managing backend containers |
 | `telemetry` | no | OpenTelemetry tracing export |
 | `wasm` | no | WASM plugin loader |

@@ -18,6 +18,7 @@ use infrarust_config::ProxyConfig;
 use infrarust_core::runtime::{ProxyRuntime, proxy_info_from_config};
 use infrarust_core::terminal::Banner;
 use infrarust_core::terminal::formatter::InfrarustFormatter;
+#[cfg(feature = "plugin-admin-api")]
 use infrarust_plugin_admin_api::log_layer::{BroadcastLogLayer, LogBroadcast};
 
 mod migrate;
@@ -111,6 +112,7 @@ fn main() -> ExitCode {
         }
     };
 
+    #[cfg(feature = "plugin-admin-api")]
     let log_broadcast = config
         .web
         .as_ref()
@@ -119,6 +121,7 @@ fn main() -> ExitCode {
     let _tracing_guard = init_tracing(
         &cli.log_level,
         &config,
+        #[cfg(feature = "plugin-admin-api")]
         log_broadcast.as_ref().map(LogBroadcast::layer),
     );
 
@@ -148,7 +151,13 @@ fn main() -> ExitCode {
         }
     };
 
-    match runtime.block_on(run(config, cli.config, log_broadcast, inherited_listener)) {
+    match runtime.block_on(run(
+        config,
+        cli.config,
+        #[cfg(feature = "plugin-admin-api")]
+        log_broadcast,
+        inherited_listener,
+    )) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("{e:#}");
@@ -184,7 +193,7 @@ struct TracingGuard {
 fn init_tracing(
     log_level: &str,
     #[cfg_attr(not(feature = "telemetry"), allow(unused_variables))] config: &ProxyConfig,
-    log_layer: Option<BroadcastLogLayer>,
+    #[cfg(feature = "plugin-admin-api")] log_layer: Option<BroadcastLogLayer>,
 ) -> TracingGuard {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
@@ -210,7 +219,9 @@ fn init_tracing(
         tracing_opentelemetry::layer().with_tracer(opentelemetry::global::tracer("infrarust"))
     }));
 
-    registry.with(log_layer).init();
+    #[cfg(feature = "plugin-admin-api")]
+    let registry = registry.with(log_layer);
+    registry.init();
 
     TracingGuard {
         #[cfg(feature = "telemetry")]
@@ -268,7 +279,7 @@ fn finalize_config(
 async fn run(
     config: ProxyConfig,
     config_path: std::path::PathBuf,
-    log_broadcast: Option<LogBroadcast>,
+    #[cfg(feature = "plugin-admin-api")] log_broadcast: Option<LogBroadcast>,
     inherited_listener: Option<std::net::TcpListener>,
 ) -> anyhow::Result<()> {
     let shutdown = CancellationToken::new();
@@ -290,7 +301,11 @@ async fn run(
     #[cfg(feature = "wasm")]
     let wasm_config = infrarust_loader_wasm::WasmLoaderConfig::from_proxy_config(&config);
 
-    let static_loader = plugins::build_static_loader(web_config.as_ref(), log_broadcast)?;
+    let static_loader = plugins::build_static_loader(
+        web_config.as_ref(),
+        #[cfg(feature = "plugin-admin-api")]
+        log_broadcast,
+    )?;
     let static_ids = static_loader.registered_ids();
     let proxy_info = proxy_info_from_config(&config, env!("CARGO_PKG_VERSION"));
 
@@ -319,6 +334,7 @@ async fn run(
 
     tracing::info!("infrarust is ready, accepting connections");
 
+    #[cfg(feature = "plugin-admin-api")]
     if let Some(web) = web_config.as_ref().filter(|w| w.enable_api) {
         let label = if web.webui_enabled() {
             "Web dashboard"
@@ -326,6 +342,13 @@ async fn run(
             "API"
         };
         tracing::info!("{label} accessible at: http://{}", web.bind);
+    }
+    #[cfg(not(feature = "plugin-admin-api"))]
+    if web_config.as_ref().is_some_and(|w| w.enable_api) {
+        tracing::warn!(
+            "the configuration enables the admin API, but this build does not include it. \
+             Rebuild with --features plugin-admin-api"
+        );
     }
 
     let result = running.wait().await;
@@ -438,6 +461,7 @@ fn startup_banner(config: &ProxyConfig) -> Banner {
         .row("servers", config.servers_dir.display())
         .row("plugins", config.plugins_dir.display())
         .row("workers", workers);
+    #[cfg(feature = "plugin-admin-api")]
     if let Some(web) = config.web.as_ref().filter(|web| web.enable_api) {
         banner = banner.row("web", &web.bind);
     }

@@ -144,84 +144,94 @@ fn prompt_settings() -> anyhow::Result<WizardSettings> {
 }
 
 fn prompt_web(proxy_bind: SocketAddr) -> anyhow::Result<Option<WebSettings>> {
-    let enabled = Confirm::new()
-        .with_prompt("Enable web admin panel?")
-        .default(true)
-        .interact()?;
-    if !enabled {
+    #[cfg(not(feature = "plugin-admin-api"))]
+    {
+        let _ = proxy_bind;
         return Ok(None);
     }
+    #[cfg(feature = "plugin-admin-api")]
+    {
+        let enabled = Confirm::new()
+            .with_prompt("Enable web admin panel?")
+            .default(true)
+            .interact()?;
+        if !enabled {
+            return Ok(None);
+        }
 
-    let web_mode = Select::new()
-        .with_prompt("Web features")
-        .items(["API + Web UI (recommended)", "API only"])
-        .default(0)
-        .interact()?;
+        let web_mode = Select::new()
+            .with_prompt("Web features")
+            .items(["API + Web UI (recommended)", "API only"])
+            .default(0)
+            .interact()?;
 
-    println!(
-        "  {}",
-        console::style("127.0.0.1 = local only (secure, use a reverse proxy for external access)")
+        println!(
+            "  {}",
+            console::style(
+                "127.0.0.1 = local only (secure, use a reverse proxy for external access)"
+            )
             .dim()
-    );
-    println!(
-        "  {}",
-        console::style("0.0.0.0   = all interfaces (accessible from the network)").dim()
-    );
-    let bind_choice = Select::new()
-        .with_prompt("Web bind address")
-        .items([
-            "127.0.0.1 (local only, recommended)",
-            "0.0.0.0 (all interfaces)",
-        ])
-        .default(0)
-        .interact()?;
+        );
+        println!(
+            "  {}",
+            console::style("0.0.0.0   = all interfaces (accessible from the network)").dim()
+        );
+        let bind_choice = Select::new()
+            .with_prompt("Web bind address")
+            .items([
+                "127.0.0.1 (local only, recommended)",
+                "0.0.0.0 (all interfaces)",
+            ])
+            .default(0)
+            .interact()?;
 
-    let port = Input::new()
-        .with_prompt("Web listen port")
-        .default(8080u16)
-        .validate_with(|input: &u16| -> Result<(), String> {
-            if *input == 0 {
-                return Err("Port must be between 1 and 65535".to_string());
-            }
-            if *input == proxy_bind.port() {
-                return Err(format!(
-                    "Web port conflicts with proxy bind port ({})",
-                    proxy_bind.port()
-                ));
-            }
-            Ok(())
-        })
-        .interact_text()?;
+        let port = Input::new()
+            .with_prompt("Web listen port")
+            .default(8080u16)
+            .validate_with(|input: &u16| -> Result<(), String> {
+                if *input == 0 {
+                    return Err("Port must be between 1 and 65535".to_string());
+                }
+                if *input == proxy_bind.port() {
+                    return Err(format!(
+                        "Web port conflicts with proxy bind port ({})",
+                        proxy_bind.port()
+                    ));
+                }
+                Ok(())
+            })
+            .interact_text()?;
 
-    let api_key = uuid::Uuid::new_v4().to_string();
-    println!();
-    println!(
-        "  {} {}",
-        console::style("Generated API key:").bold(),
-        console::style(&api_key).green().bold()
-    );
-    println!();
-    println!(
-        "  {} Save this key! It is required to access the web panel.",
-        console::style("WARNING:").yellow().bold()
-    );
-    println!(
-        "  It will be written to the {} section of {}",
-        console::style("[web]").dim(),
-        console::style("infrarust.toml").dim()
-    );
-    println!();
+        let api_key = uuid::Uuid::new_v4().to_string();
+        println!();
+        println!(
+            "  {} {}",
+            console::style("Generated API key:").bold(),
+            console::style(&api_key).green().bold()
+        );
+        println!();
+        println!(
+            "  {} Save this key! It is required to access the web panel.",
+            console::style("WARNING:").yellow().bold()
+        );
+        println!(
+            "  It will be written to the {} section of {}",
+            console::style("[web]").dim(),
+            console::style("infrarust.toml").dim()
+        );
+        println!();
 
-    Ok(Some(WebSettings {
-        webui: web_mode == 0,
-        host: if bind_choice == 0 {
-            "127.0.0.1"
-        } else {
-            "0.0.0.0"
-        },
-        port,
-        api_key,
-    }))
+        Ok(Some(WebSettings {
+            webui: web_mode == 0,
+            host: if bind_choice == 0 {
+                "127.0.0.1"
+            } else {
+                "0.0.0.0"
+            },
+            port,
+            api_key,
+        }))
+    }
 }
 
 fn prompt_sample() -> anyhow::Result<Option<SampleServer>> {

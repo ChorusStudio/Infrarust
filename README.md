@@ -34,7 +34,7 @@
 |---|---|
 | **Routing** | Domain and subdomain-based routing with wildcard support. One port, many servers. |
 | **Proxy modes** | `passthrough`, `zerocopy`, `client_only`, `offline`, `server_only`. From raw TCP relay to full Mojang auth interception. |
-| **Web dashboard** | Built-in admin panel with REST API, real-time event streaming (SSE), and log viewer. Add `[web]` to your config and it's running. |
+| **Web dashboard** | Optional admin panel with REST API, real-time event streaming (SSE), and log viewer. Not in the published binaries. Build with `--features plugin-admin-api` and add `[web]` to the config. |
 | **Docker** | Auto-discover Minecraft containers via labels - no config files needed for Docker-managed servers. Scratch-based image, multi-arch. |
 | **Plugins** | Event-driven plugin system with built-in auth, server wake, and queue plugins. Write your own in Rust. |
 | **Security** | Rate limiting, IP filtering, ban system (IP / UUID / username). |
@@ -68,8 +68,6 @@ Archives for macOS (`darwin`) and Windows, x86_64 and arm64, are on the [release
 ```toml
 bind = "0.0.0.0:25565"
 servers_dir = "./servers"
-
-[web]
 ```
 
 `servers/survival.toml`:
@@ -84,8 +82,6 @@ addresses = ["127.0.0.1:25566"]
 ```bash
 infrarust
 ```
-
-The web dashboard is at `http://localhost:8080`. Your API key is in `plugins/admin_api/config.toml`.
 
 Full docs at **[infrarust.dev](https://infrarust.dev/guide/)**.
 

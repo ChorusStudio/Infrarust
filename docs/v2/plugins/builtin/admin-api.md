@@ -7,19 +7,23 @@ description: Built-in REST API and web dashboard for managing your Infrarust pro
 
 The admin API plugin exposes a REST API and an embedded web dashboard for managing your Infrarust proxy over HTTP. You can list players, kick or move them between servers, manage bans, edit server and proxy configuration, drain a backend address for maintenance, and stream live events and logs, all without touching the Minecraft client or the terminal.
 
-The plugin is always compiled into the binary. It activates when `infrarust.toml` has a `[web]` section and `enable_api` is left on.
+The published binaries do not include this plugin. Build Infrarust with the `plugin-admin-api` feature, then add a `[web]` section to `infrarust.toml` and leave `enable_api` on.
 
 Anything the API creates is stored in its own data directory, `<plugins_dir>/admin_api/`. It reads configuration from every provider but only writes servers it owns, plus `infrarust.toml` through the global config endpoints. Your `servers_dir` stays under the file provider's control.
 
 ## Enabling the plugin
 
-Add a `[web]` section to your `infrarust.toml`:
+Build the proxy with the feature, then add a `[web]` section to `infrarust.toml`:
+
+```bash
+cargo build --release -p infrarust --features plugin-admin-api
+```
 
 ```toml
 [web]
 ```
 
-That is enough. All fields have defaults:
+With the feature compiled in, that section is enough. All fields have defaults:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|

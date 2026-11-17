@@ -1,12 +1,17 @@
 //! Static plugin registration via Cargo features.
 
-use infrarust_config::{ApiKeyError, ApiKeyState, WebConfig};
+use infrarust_config::WebConfig;
+#[cfg(feature = "plugin-admin-api")]
+use infrarust_config::{ApiKeyError, ApiKeyState};
 use infrarust_core::plugin::StaticPluginLoader;
+#[cfg(feature = "plugin-admin-api")]
 use infrarust_plugin_admin_api::log_layer::LogBroadcast;
 
 pub fn build_static_loader(
-    web_config: Option<&WebConfig>,
-    logs: Option<LogBroadcast>,
+    #[cfg_attr(not(feature = "plugin-admin-api"), allow(unused_variables))] web_config: Option<
+        &WebConfig,
+    >,
+    #[cfg(feature = "plugin-admin-api")] logs: Option<LogBroadcast>,
 ) -> anyhow::Result<StaticPluginLoader> {
     let loader = StaticPluginLoader::new();
 
@@ -37,6 +42,7 @@ pub fn build_static_loader(
         });
     }
 
+    #[cfg(feature = "plugin-admin-api")]
     if let Some(web) = web_config.filter(|w| w.enable_api) {
         use infrarust_api::plugin::Plugin;
         use infrarust_plugin_admin_api::config::{ApiConfig, RateLimitConfig};
@@ -76,6 +82,7 @@ pub fn build_static_loader(
     Ok(loader)
 }
 
+#[cfg(feature = "plugin-admin-api")]
 fn admin_api_key(web: &WebConfig) -> Result<String, ApiKeyError> {
     match web.api_key_state()? {
         ApiKeyState::Usable(key) => Ok(key),
@@ -84,6 +91,7 @@ fn admin_api_key(web: &WebConfig) -> Result<String, ApiKeyError> {
     }
 }
 
+#[cfg(feature = "plugin-admin-api")]
 fn ephemeral_api_key(bind: &str) -> String {
     let key = uuid::Uuid::new_v4().to_string();
     tracing::warn!(
@@ -97,7 +105,7 @@ fn ephemeral_api_key(bind: &str) -> String {
     key
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "plugin-admin-api"))]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;

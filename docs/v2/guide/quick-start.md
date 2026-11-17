@@ -20,10 +20,9 @@ When no `infrarust.toml` is found in the working directory, the wizard prompts y
 - Proxy listen address, the address and port players connect to (default `0.0.0.0:25565`)
 - Servers directory, where backend server definitions live (default `./servers`)
 - Maximum connections, the connection limit, `0` for unlimited
-- Web admin panel, which enables the REST API and web dashboard with a bind address and port
 - Sample server, an optional first backend server definition with a domain and address
 
-If you enable the web panel, the wizard generates an API key and writes it to the `[web]` section of `infrarust.toml`. Save this key, it is required to access the dashboard.
+A build that includes the `plugin-admin-api` feature also asks whether to enable the web admin panel. If you turn it on, the wizard generates an API key and writes it to the `[web]` section of `infrarust.toml`. Save this key, it is required to access the dashboard. Published binaries do not include that feature.
 
 Once confirmed, the wizard writes `infrarust.toml`, creates the servers directory, and starts the proxy immediately.
 
@@ -44,14 +43,12 @@ Infrarust reads its main configuration from `infrarust.toml` in the working dire
 ```toml
 bind = "0.0.0.0:25565"
 servers_dir = "./servers"
-
-[web]
 ```
 
-`bind` sets the address and port Infrarust listens on. `servers_dir` tells it where to find server definitions. The `[web]` section enables the admin REST API and web dashboard on port `8080`.
+`bind` sets the address and port Infrarust listens on. `servers_dir` tells it where to find server definitions.
 
 ::: tip
-`bind` and `servers_dir` are the defaults. The `[web]` section activates the [Admin API & Web UI](../plugins/builtin/admin-api) plugin with all defaults, so the API and dashboard run on `http://127.0.0.1:8080`.
+`bind` and `servers_dir` are the defaults. The admin API and web dashboard are a separate compile option, [`plugin-admin-api`](../plugins/builtin/admin-api), and are not in the published binaries.
 :::
 
 ## 2. Define a backend server
@@ -90,10 +87,7 @@ You should see output like:
 ```
 INFO starting infrarust v2.0.0-beta.4 {bind=0.0.0.0:25565, servers_dir=./servers}
 INFO infrarust is ready, accepting connections
-INFO Web dashboard accessible at: http://127.0.0.1:8080
 ```
-
-Open `http://127.0.0.1:8080` in a browser to access the web dashboard. API requests always need a key. If you set `api_key` in `[web]`, that is the key to use. If you leave it unset on a loopback bind, Infrarust generates an ephemeral key on startup and logs it as a warning.
 
 To use a config file at a different path:
 

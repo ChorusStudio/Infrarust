@@ -255,7 +255,7 @@ secret_file = "forwarding.secret"
 
 ### `[web]`
 
-Web admin API and UI. Absent from the file means the web plugin is not loaded.
+Web admin API and UI. Absent from the file means the web plugin is not loaded. The published binaries omit the plugin; build with `--features plugin-admin-api` before this section can start it.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
